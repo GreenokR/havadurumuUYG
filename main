@@ -1,0 +1,133 @@
+import tkinter as tk
+from tkinter import ttk
+from PIL import Image, ImageTk
+import json
+import requests
+
+# OpenWeatherMap API KEY (buraya kendi API key'ini yazmalısın)
+API_KEY = "YOUR_API_KEY_HERE"
+
+# Koordinat alma ve hava tahmini çekme fonksiyonları
+def get_coordinates(city, district):
+    url = "http://api.openweathermap.org/geo/1.0/direct"
+    params = {
+        "q": f"{district},{city},TR",
+        "limit": 1,
+        "appid": API_KEY
+    }
+    res = requests.get(url, params=params)
+    data = res.json()
+    if data:
+        return data[0]["lat"], data[0]["lon"]
+    return None, None
+
+def get_weather_forecast(lat, lon):
+    url = "https://api.openweathermap.org/data/2.5/onecall"
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "exclude": "current,minutely,hourly,alerts",
+        "units": "metric",
+        "lang": "tr",
+        "appid": API_KEY
+    }
+    res = requests.get(url, params=params)
+    data = res.json()
+    forecast = []
+    for day in data["daily"][:7]:
+        temp = int(day["temp"]["day"])
+        desc = day["weather"][0]["description"]
+        icon = day["weather"][0]["icon"]
+        forecast.append((temp, desc, icon))
+    return forecast
+
+# Hava durumu ekranı
+def hava_durumu_ekrani(il, ilce):
+    lat, lon = get_coordinates(il, ilce)
+    if lat is None:
+        print("Koordinatlar alınamadı.")
+        return
+
+    hava = get_weather_forecast(lat, lon)
+
+    pencere = tk.Toplevel()
+    pencere.title(f"{il}-{ilce} Hava Durumu")
+    pencere.geometry("400x600")
+
+    try:
+        resim_yolu = f"resimler/{il.lower()}.jpg"
+        arkaplan_resmi = Image.open(resim_yolu).resize((400, 600))
+    except:
+        arkaplan_resmi = Image.new("RGB", (400, 600), "skyblue")
+
+    bg = ImageTk.PhotoImage(arkaplan_resmi)
+    bg_label = tk.Label(pencere, image=bg)
+    bg_label.image = bg
+    bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+
+    baslik = tk.Label(pencere, text=f"{il.upper()} - {ilce.upper()}", font=("Arial", 18, "bold"), bg="#00000070", fg="white")
+    baslik.pack(pady=20)
+
+    gunler = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
+    for i, (temp, desc, icon) in enumerate(hava):
+        g = gunler[i % 7]
+        satir = tk.Label(
+            pencere,
+            text=f"{g:<5}  {temp}°C  {desc.capitalize()}",
+            font=("Arial", 14),
+            bg="#ffffffcc",
+            anchor="w",
+            padx=20
+        )
+        satir.pack(pady=5, fill="x", padx=20)
+
+    pencere.mainloop()
+
+# Ana ekran
+ana = tk.Tk()
+ana.title("Hava Durumu Uygulaması")
+ana.geometry("400x600")
+
+try:
+    arkaplan_resmi = Image.open("İl SEÇ.jpg").resize((400, 600))
+except:
+    arkaplan_resmi = Image.new("RGB", (400, 600), "skyblue")
+arkaplan_tk = ImageTk.PhotoImage(arkaplan_resmi)
+
+bg_label = tk.Label(ana, image=arkaplan_tk)
+bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+
+secilen_il = tk.StringVar()
+secilen_ilce = tk.StringVar()
+
+with open("iller_ve_ilceler.json", "r", encoding="utf-8") as f:
+    iller_ve_ilceler = json.load(f)
+
+def il_secildi(event):
+    il = secilen_il.get()
+    ilceler = iller_ve_ilceler.get(il, [])
+    ilce_menu['values'] = ilceler
+    secilen_ilce.set("")
+
+def ilce_secildi(event):
+    il = secilen_il.get()
+    ilce = secilen_ilce.get()
+    if il and ilce:
+        hava_durumu_ekrani(il, ilce)
+
+il_label = tk.Label(ana, text="İL SEÇ", font=("Helvetica", 14, "bold"), bg="white")
+il_label.place(x=150, y=200)
+
+il_menu = ttk.Combobox(ana, textvariable=secilen_il, state="readonly")
+il_menu['values'] = list(iller_ve_ilceler.keys())
+il_menu.place(x=100, y=230, width=200)
+il_menu.bind("<<ComboboxSelected>>", il_secildi)
+
+ilce_label = tk.Label(ana, text="İLÇE SEÇ", font=("Helvetica", 14, "bold"), bg="white")
+ilce_label.place(x=150, y=280)
+
+ilce_menu = ttk.Combobox(ana, textvariable=secilen_ilce, state="readonly")
+ilce_menu.place(x=100, y=310, width=200)
+ilce_menu.bind("<<ComboboxSelected>>", ilce_secildi)
+
+ana.mainloop()
